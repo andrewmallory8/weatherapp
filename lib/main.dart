@@ -41,6 +41,10 @@ class _WeatherHomeState extends State<WeatherHome> {
   late final WeatherService service = widget.service ?? WeatherService();
   City? selectedCity;
   Weather? weather;
+  AirQuality? airQuality;
+  bool airLoading = false;
+  bool airFailed = false;
+  int airRequest = 0;
   List<City> results = [];
   bool searching = false;
   bool loading = false;
@@ -113,6 +117,7 @@ class _WeatherHomeState extends State<WeatherHome> {
         loading = false;
         searchController.text = city.name;
       });
+      loadAirQuality(city);
     } catch (_) {
       if (!mounted || id != request) return;
       setState(() {
@@ -121,6 +126,53 @@ class _WeatherHomeState extends State<WeatherHome> {
       });
     }
   }
+
+  Future<void> loadAirQuality(City city) async {
+    final id = ++airRequest;
+    setState(() {
+      airQuality = null;
+      airLoading = true;
+      airFailed = false;
+    });
+    try {
+      final result = await service.airQuality(city);
+      if (!mounted || id != airRequest) return;
+      setState(() {
+        airQuality = result;
+        airLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || id != airRequest) return;
+      setState(() {
+        airFailed = true;
+        airLoading = false;
+      });
+    }
+  }
+
+  Widget airQualityCard() => Tooltip(
+    message: airFailed
+        ? 'Air quality unavailable. Tap to retry.'
+        : airLoading
+        ? 'Loading air quality'
+        : 'US AQI · ${airQuality?.category ?? 'Unavailable'}',
+    child: Semantics(
+      label: 'US Air Quality Index',
+      button: airFailed,
+      child: GestureDetector(
+        onTap: airFailed ? () => loadAirQuality(selectedCity!) : null,
+        child: detail(
+          Icons.blur_on,
+          'AIR QUALITY',
+          airLoading ? '…' : '${airQuality?.aqi ?? '—'}',
+          '',
+          airLoading
+              ? 'AQI - Loading…'
+              : 'AQI - ${airQuality?.category ?? 'Unavailable'}',
+        ),
+      ),
+    ),
+  );
 
   String clockTime(String value) {
     final time = DateTime.parse(value);
@@ -530,7 +582,7 @@ class _WeatherHomeState extends State<WeatherHome> {
                   const SizedBox(height: 28),
                   const Center(
                     child: Text(
-                      'Weather: Open-Meteo · Locations: GeoNames',
+                      'Weather: Open-Meteo · Locations: GeoNames\nAir quality: Open-Meteo / CAMS',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: muted, fontSize: 11, height: 1.8),
                     ),
@@ -702,6 +754,7 @@ class _WeatherHomeState extends State<WeatherHome> {
             '',
             'Local time',
           ),
+          airQualityCard(),
         ],
       ),
     ],

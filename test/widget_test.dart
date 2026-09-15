@@ -64,6 +64,92 @@ Future<void> search(WidgetTester tester, String query) async {
 }
 
 void main() {
+  test('AQI categories handle boundaries and missing values', () {
+    for (final entry in {
+      0: 'Good',
+      50: 'Good',
+      51: 'Moderate',
+      100: 'Moderate',
+      101: 'Unhealthy for sensitive groups',
+      150: 'Unhealthy for sensitive groups',
+      151: 'Unhealthy',
+      200: 'Unhealthy',
+      201: 'Very unhealthy',
+      300: 'Very unhealthy',
+      301: 'Hazardous',
+    }.entries) {
+      expect(
+        AirQuality({
+          'current': {'us_aqi': entry.key},
+        }).category,
+        entry.value,
+      );
+    }
+    expect(
+      AirQuality({
+        'current': {'us_aqi': null},
+      }).category,
+      'Unavailable',
+    );
+    expect(
+      AirQuality({
+        'current': {'pm2_5': -1},
+      }).value('pm2_5'),
+      isNull,
+    );
+  });
+
+  testWidgets('Air quality failure preserves weather and can be retried', (
+    tester,
+  ) async {
+    var attempts = 0;
+    final service = WeatherService(
+      client: MockClient((request) async {
+        if (request.url.host.startsWith('geocoding')) {
+          return http.Response(jsonEncode(cities), 200);
+        }
+        if (request.url.host.startsWith('air-quality')) {
+          expect(request.url.queryParameters['latitude'], '51.5');
+          expect(request.url.queryParameters['current'], 'us_aqi,pm2_5,pm10');
+          if (++attempts == 1) return http.Response('', 503);
+          return http.Response(
+            jsonEncode({
+              'current': {'us_aqi': 42, 'pm2_5': 8.2, 'pm10': null},
+            }),
+            200,
+          );
+        }
+        return http.Response(jsonEncode(forecast()), 200);
+      }),
+    );
+    addTearDown(service.close);
+    await tester.pumpWidget(MyApp(service: service));
+    await search(tester, 'London');
+    await tester.tap(find.text('England, United Kingdom'));
+    await tester.pumpAndSettle();
+    expect(find.text('22°'), findsOneWidget);
+    expect(
+      find.byTooltip('Air quality unavailable. Tap to retry.'),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(find.text('AIR QUALITY'));
+    await tester.tap(find.text('AIR QUALITY'));
+    await tester.pumpAndSettle();
+    expect(find.text('42'), findsOneWidget);
+    expect(find.byTooltip('US AQI · Good'), findsOneWidget);
+    final windTile = find
+        .ancestor(of: find.text('WIND'), matching: find.byType(Container))
+        .first;
+    final airTile = find
+        .ancestor(
+          of: find.text('AIR QUALITY'),
+          matching: find.byType(Container),
+        )
+        .first;
+    expect(tester.getSize(airTile), tester.getSize(windTile));
+    expect(tester.getTopLeft(airTile).dx, tester.getTopLeft(windTile).dx);
+  });
+
   testWidgets(
     'Search selects an unlisted city and updates all weather at mobile width',
     (tester) async {

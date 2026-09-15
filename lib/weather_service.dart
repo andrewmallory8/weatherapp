@@ -47,6 +47,17 @@ class WeatherService {
     ];
   }
 
+  Future<AirQuality> airQuality(City city) async => AirQuality(
+    await _get(
+      Uri.https('air-quality-api.open-meteo.com', '/v1/air-quality', {
+        'latitude': '${city.latitude}',
+        'longitude': '${city.longitude}',
+        'current': 'us_aqi,pm2_5,pm10',
+        'timezone': 'auto',
+      }),
+    ),
+  );
+
   Future<Weather> forecast(City city) async => Weather(
     await _get(
       Uri.https('api.open-meteo.com', '/v1/forecast', {
@@ -94,3 +105,25 @@ String condition(int code) => switch (code) {
   >= 95 => 'Thunderstorms',
   _ => 'Weather conditions',
 };
+
+class AirQuality {
+  AirQuality(Map<String, dynamic> data)
+    : current = data['current'] as Map<String, dynamic>;
+  final Map<String, dynamic> current;
+  num? value(String key) {
+    final value = current[key];
+    return value is num && value.isFinite && value >= 0 ? value : null;
+  }
+
+  int? get aqi => value('us_aqi')?.round();
+  String get category {
+    final index = aqi;
+    if (index == null) return 'Unavailable';
+    if (index <= 50) return 'Good';
+    if (index <= 100) return 'Moderate';
+    if (index <= 150) return 'Unhealthy for sensitive groups';
+    if (index <= 200) return 'Unhealthy';
+    if (index <= 300) return 'Very unhealthy';
+    return 'Hazardous';
+  }
+}
