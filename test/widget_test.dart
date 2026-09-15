@@ -36,6 +36,8 @@ Map<String, dynamic> forecast() => {
     'temperature_2m_min': List.filled(7, 16),
     'weather_code': List.filled(7, 3),
     'uv_index_max': [4],
+    'precipitation_probability_max': [65],
+    'precipitation_sum': [2.4],
     'sunset': ['2026-09-15T19:24'],
   },
 };
@@ -64,6 +66,44 @@ Future<void> search(WidgetTester tester, String query) async {
 }
 
 void main() {
+  test('Precipitation preserves zero and treats missing or invalid data as unavailable', () {
+    for (final value in [null, -1, double.nan, double.infinity]) {
+      final weather = Weather({
+        'daily': {
+          'precipitation_sum': [value],
+        },
+      });
+      expect(weather.todayPrecipitation('precipitation_sum'), isNull);
+    }
+    expect(
+      Weather({'daily': <String, dynamic>{}})
+          .todayPrecipitation('precipitation_sum'),
+      isNull,
+    );
+    expect(
+      Weather({
+        'daily': {'precipitation_sum': []},
+      }).todayPrecipitation('precipitation_sum'),
+      isNull,
+    );
+    expect(
+      Weather({
+        'daily': {
+          'precipitation_sum': [0],
+        },
+      }).todayPrecipitation('precipitation_sum'),
+      0,
+    );
+    expect(
+      Weather({
+        'daily': {
+          'precipitation_probability_max': [101],
+        },
+      }).todayPrecipitation('precipitation_probability_max'),
+      isNull,
+    );
+  });
+
   test('AQI categories handle boundaries and missing values', () {
     for (final entry in {
       0: 'Good',
@@ -128,15 +168,12 @@ void main() {
     await tester.tap(find.text('England, United Kingdom'));
     await tester.pumpAndSettle();
     expect(find.text('22°'), findsOneWidget);
-    expect(
-      find.byTooltip('Air quality unavailable. Tap to retry.'),
-      findsOneWidget,
-    );
+    expect(find.text('AQI - Unavailable'), findsOneWidget);
     await tester.ensureVisible(find.text('AIR QUALITY'));
     await tester.tap(find.text('AIR QUALITY'));
     await tester.pumpAndSettle();
     expect(find.text('42'), findsOneWidget);
-    expect(find.byTooltip('US AQI · Good'), findsOneWidget);
+    expect(find.text('AQI - Good'), findsOneWidget);
     final windTile = find
         .ancestor(of: find.text('WIND'), matching: find.byType(Container))
         .first;
@@ -190,6 +227,28 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('7:24 PM'), findsOneWidget);
+      await tester.ensureVisible(find.text('PRECIPITATION'));
+      expect(find.text('65'), findsOneWidget);
+      expect(find.text('2.4 mm total today'), findsOneWidget);
+      final air = tester.getTopLeft(
+        find
+            .ancestor(
+              of: find.text('AIR QUALITY'),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      final rain = tester.getTopLeft(
+        find
+            .ancestor(
+              of: find.text('PRECIPITATION'),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(rain.dy, air.dy);
+      expect(rain.dx, greaterThan(air.dx));
+      expect(tester.takeException(), isNull);
     },
   );
 
