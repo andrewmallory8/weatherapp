@@ -66,7 +66,8 @@ class WeatherService {
         'timezone': 'auto',
         'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,is_day',
         'hourly': 'temperature_2m,weather_code,is_day',
-        'daily': 'weather_code,temperature_2m_max,temperature_2m_min,sunset,uv_index_max',
+        'daily': 'weather_code,temperature_2m_max,temperature_2m_min,sunset,uv_index_max,precipitation_probability_max,precipitation_sum',
+        'precipitation_unit': 'mm',
         'forecast_days': '7',
       }),
     ),
@@ -82,6 +83,15 @@ class Weather {
   int get temperature => (current['temperature_2m'] as num).round();
   int get code => (current['weather_code'] as num).toInt();
   int dayValue(String key, int i) => (daily[key][i] as num).round();
+  num? todayPrecipitation(String key) {
+    final values = daily[key];
+    if (values is! List || values.isEmpty) return null;
+    final value = values.first;
+    if (value is! num || !value.isFinite || value < 0) return null;
+    if (key == 'precipitation_probability_max' && value > 100) return null;
+    return value;
+  }
+
   List<int> get hours {
     final now = DateTime.parse(current['time'] as String);
     return [

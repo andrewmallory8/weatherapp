@@ -150,26 +150,20 @@ class _WeatherHomeState extends State<WeatherHome> {
     }
   }
 
-  Widget airQualityCard() => Tooltip(
-    message: airFailed
-        ? 'Air quality unavailable. Tap to retry.'
-        : airLoading
-        ? 'Loading air quality'
-        : 'US AQI · ${airQuality?.category ?? 'Unavailable'}',
-    child: Semantics(
-      label: 'US Air Quality Index',
-      button: airFailed,
-      child: GestureDetector(
-        onTap: airFailed ? () => loadAirQuality(selectedCity!) : null,
-        child: detail(
-          Icons.blur_on,
-          'AIR QUALITY',
-          airLoading ? '…' : '${airQuality?.aqi ?? '—'}',
-          '',
-          airLoading
-              ? 'AQI - Loading…'
-              : 'AQI - ${airQuality?.category ?? 'Unavailable'}',
-        ),
+  Widget airQualityCard() => Semantics(
+    label: 'US Air Quality Index',
+    hint: airFailed ? 'Air quality unavailable. Tap to retry.' : null,
+    button: airFailed,
+    child: GestureDetector(
+      onTap: airFailed ? () => loadAirQuality(selectedCity!) : null,
+      child: detail(
+        Icons.blur_on,
+        'AIR QUALITY',
+        airLoading ? '…' : '${airQuality?.aqi ?? '—'}',
+        '',
+        airLoading
+            ? 'AQI - Loading…'
+            : 'AQI - ${airQuality?.category ?? 'Unavailable'}',
       ),
     ),
   );
@@ -755,6 +749,20 @@ class _WeatherHomeState extends State<WeatherHome> {
             'Local time',
           ),
           airQualityCard(),
+          Semantics(
+            label: 'Today’s highest hourly precipitation probability and forecast total, including rain, showers and snowfall. City local time.',
+            child: detail(
+              Icons.umbrella_outlined,
+              'PRECIPITATION',
+              weather!
+                      .todayPrecipitation('precipitation_probability_max')
+                      ?.round()
+                      .toString() ??
+                  '—',
+              '%',
+              "${weather!.todayPrecipitation('precipitation_sum')?.toStringAsFixed(1) ?? '—'} mm total today",
+            ),
+          ),
         ],
       ),
     ],
@@ -780,12 +788,14 @@ class _WeatherHomeState extends State<WeatherHome> {
           children: [
             Icon(icon, size: 17, color: muted),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 9,
-                color: muted,
-                letterSpacing: 1,
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 9,
+                  color: muted,
+                  letterSpacing: 1,
+                ),
               ),
             ),
           ],
