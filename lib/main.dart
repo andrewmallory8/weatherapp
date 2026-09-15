@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'weather_service.dart';
+
 void main() => runApp(const MyApp());
 
 const ink = Color(0xFF243C39);
@@ -9,7 +11,8 @@ const muted = Color(0xFF7D8880);
 const paper = Color(0xFFF6F5EF);
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.service});
+  final WeatherService? service;
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -21,27 +24,126 @@ class MyApp extends StatelessWidget {
       fontFamily: 'Helvetica',
       textTheme: const TextTheme(bodyMedium: TextStyle(color: ink)),
     ),
-    home: const WeatherHome(),
+    home: WeatherHome(service: service),
   );
 }
 
 class WeatherHome extends StatefulWidget {
-  const WeatherHome({super.key});
+  const WeatherHome({super.key, this.service});
+  final WeatherService? service;
   @override
   State<WeatherHome> createState() => _WeatherHomeState();
 }
 
 class _WeatherHomeState extends State<WeatherHome> {
   bool celsius = true;
-  int city = 0;
-  final cities = ['San Francisco', 'Chicago', 'New York'];
-  final temperatures = [18, 22, 24];
+  final searchController = TextEditingController();
+  late final WeatherService service = widget.service ?? WeatherService();
+  City? selectedCity;
+  Weather? weather;
+  List<City> results = [];
+  bool searching = false;
+  bool loading = false;
+  String? message;
+  int request = 0;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    if (widget.service == null) service.close();
+    super.dispose();
+  }
+
+  void clearSearch() {
+    request++;
+    setState(() {
+      results = [];
+      searching = false;
+      loading = false;
+      message = null;
+    });
+  }
+
+  Future<void> search() async {
+    final query = searchController.text.trim();
+    final id = ++request;
+    setState(() {
+      results = [];
+      loading = false;
+      searching = query.length >= 2;
+      message = query.length < 2
+          ? 'Enter at least 2 characters to search.'
+          : null;
+    });
+    if (query.length < 2) return;
+    try {
+      final matches = await service.search(query);
+      if (!mounted || id != request) return;
+      setState(() {
+        results = matches;
+        searching = false;
+        message = matches.isEmpty
+            ? 'No cities found. Try another spelling.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted || id != request) return;
+      setState(() {
+        searching = false;
+        message =
+            'Couldn’t search cities. Check your connection and try again.';
+      });
+    }
+  }
+
+  Future<void> selectCity(City city) async {
+    final id = ++request;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      loading = true;
+      message = null;
+    });
+    try {
+      final forecast = await service.forecast(city);
+      if (!mounted || id != request) return;
+      setState(() {
+        selectedCity = city;
+        weather = forecast;
+        results = [];
+        loading = false;
+        searchController.text = city.name;
+      });
+    } catch (_) {
+      if (!mounted || id != request) return;
+      setState(() {
+        loading = false;
+        message = 'Couldn’t load weather. Select the city to retry.';
+      });
+    }
+  }
+
+  String clockTime(String value) {
+    final time = DateTime.parse(value);
+    return '${time.hour % 12 == 0 ? 12 : time.hour % 12}:${time.minute.toString().padLeft(2, '0')} ${time.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  IconData weatherIcon(int code, {bool night = false}) {
+    if (code >= 95) return Icons.thunderstorm_outlined;
+    if (code >= 71 && code <= 77 || code == 85 || code == 86) {
+      return Icons.ac_unit;
+    }
+    if (code >= 51) return Icons.water_drop_outlined;
+    if (code >= 2) return Icons.cloud_outlined;
+    return night ? Icons.nightlight_round : Icons.wb_sunny_outlined;
+  }
+
   String temp(int value) =>
       '${celsius ? value : (value * 9 / 5 + 32).round()}°';
 
   @override
   Widget build(BuildContext context) {
-    final current = temperatures[city];
+    final current = weather?.temperature ?? 0;
+    final hours = weather?.hours ?? <int>[];
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -65,268 +167,370 @@ class _WeatherHomeState extends State<WeatherHome> {
                         ),
                       ),
                       const Spacer(),
-                      Semantics(
-                        label: 'Temperature unit',
-                        child: SizedBox(
-                          width: 110,
-                          child: SegmentedButton<bool>(
-                            segments: const [
-                              ButtonSegment(value: true, label: Text('°C')),
-                              ButtonSegment(value: false, label: Text('°F')),
-                            ],
-                            selected: {celsius},
-                            showSelectedIcon: false,
-                            onSelectionChanged: (value) =>
-                                setState(() => celsius = value.first),
-                            style: SegmentedButton.styleFrom(
-                              minimumSize: const Size(48, 40),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              selectedBackgroundColor: ink,
-                              selectedForegroundColor: Colors.white,
-                              side: const BorderSide(color: Color(0xFFD9DDD3)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 38),
-                  Row(
-                    children: [
-                      const Icon(Icons.near_me_outlined, size: 18),
-                      const SizedBox(width: 7),
-                      DropdownButton<int>(
-                        value: city,
-                        underline: const SizedBox(),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: ink,
-                        ),
-                        items: List.generate(
-                          cities.length,
-                          (i) => DropdownMenuItem(
-                            value: i,
-                            child: Text(cities[i]),
-                          ),
-                        ),
-                        onChanged: (value) => setState(() => city = value!),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    'A little sunshine goes a long way.',
-                    style: TextStyle(color: muted, fontSize: 14),
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8EDDC),
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => Stack(
-                        children: [
-                          Positioned(
-                            right: -45,
-                            bottom: -140,
-                            child: Container(
-                              width: 450,
-                              height: 320,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Color(0xFFDDE6CE),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.all(28),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Row(
-                                  children: [
-                                    Icon(
-                                      Icons.circle,
-                                      size: 7,
-                                      color: Color(0xFF73885E),
-                                    ),
-                                    SizedBox(width: 7),
-                                    Text(
-                                      'CURRENT WEATHER',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        letterSpacing: 1.7,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 22),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            temp(current),
-                                            style: TextStyle(
-                                              fontSize:
-                                                  constraints.maxWidth < 400
-                                                  ? 88
-                                                  : 112,
-                                              height: 1,
-                                              letterSpacing: -7,
-                                              fontWeight: FontWeight.w300,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          const Text(
-                                            'Mostly sunny',
-                                            style: TextStyle(
-                                              fontSize: 21,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Feels like ${temp(current - 1)}  ·  H:${temp(current + 3)}  L:${temp(current - 4)}',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Color(0xFF677563),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: constraints.maxWidth < 400
-                                          ? 95
-                                          : 180,
-                                      height: 150,
-                                      child: const CustomPaint(
-                                        painter: SunPainter(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 30),
-                                const Divider(color: Color(0xFFCDD7C0)),
-                                const SizedBox(height: 12),
-                                const Row(
-                                  children: [
-                                    Icon(Icons.auto_awesome_outlined, size: 17),
-                                    SizedBox(width: 9),
-                                    Expanded(
-                                      child: Text(
-                                        'Clear skies ahead. A lovely day to get outside.',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          height: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                      if (weather != null)
+                        Semantics(
+                          label: 'Temperature unit',
+                          child: SizedBox(
+                            width: 110,
+                            child: SegmentedButton<bool>(
+                              segments: const [
+                                ButtonSegment(value: true, label: Text('°C')),
+                                ButtonSegment(value: false, label: Text('°F')),
                               ],
+                              selected: {celsius},
+                              showSelectedIcon: false,
+                              onSelectionChanged: (value) =>
+                                  setState(() => celsius = value.first),
+                              style: SegmentedButton.styleFrom(
+                                minimumSize: const Size(48, 40),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                selectedBackgroundColor: ink,
+                                selectedForegroundColor: Colors.white,
+                                side: const BorderSide(
+                                  color: Color(0xFFD9DDD3),
+                                ),
+                              ),
                             ),
                           ),
-                        ],
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  TextField(
+                    controller: searchController,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => search(),
+                    onChanged: (_) => clearSearch(),
+                    decoration: InputDecoration(
+                      hintText: 'Search for any city',
+                      labelText: 'Search city',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: IconButton(
+                        tooltip: 'Search cities',
+                        onPressed: search,
+                        icon: const Icon(Icons.arrow_forward),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: const BorderSide(color: Color(0xFFD9DDD3)),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  sectionTitle('The next 24 hours', 'HOURLY FORECAST'),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 134,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: 12,
-                      separatorBuilder: (_, _) => const SizedBox(width: 10),
-                      itemBuilder: (context, i) => Container(
-                        width: 77,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        decoration: BoxDecoration(
-                          color: i == 0
-                              ? ink
-                              : Colors.white.withValues(alpha: .65),
-                          borderRadius: BorderRadius.circular(22),
-                          border: i == 0
-                              ? null
-                              : Border.all(color: const Color(0xFFE6E8DF)),
-                        ),
+                  if (searching || loading) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        loading ? 'Loading weather…' : 'Searching cities…',
+                      ),
+                    ),
+                  ],
+                  if (message != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Semantics(liveRegion: true, child: Text(message!)),
+                    ),
+                  if (results.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        clipBehavior: Clip.antiAlias,
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              i == 0
-                                  ? 'Now'
-                                  : '${(i + 10) > 12 ? i - 2 : i + 10} ${i + 10 >= 12 ? 'PM' : 'AM'}',
-                              style: TextStyle(
-                                color: i == 0 ? Colors.white70 : muted,
-                                fontSize: 11,
+                            for (final city in results)
+                              ListTile(
+                                leading: const Icon(Icons.location_on_outlined),
+                                title: Text(city.name),
+                                subtitle: Text(city.region),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: loading ? null : () => selectCity(city),
                               ),
-                            ),
-                            Icon(
-                              i > 8
-                                  ? Icons.nightlight_round
-                                  : i == 3 || i == 6
-                                  ? Icons.cloud_outlined
-                                  : Icons.wb_sunny_outlined,
-                              color: i > 8 ? muted : const Color(0xFFD4A64A),
-                              size: 27,
-                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  if (weather == null)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 60),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.travel_explore, size: 64, color: muted),
+                            SizedBox(height: 20),
                             Text(
-                              temp(
-                                current +
-                                    [0, 1, 2, 3, 3, 2, 1, 0, -1, -2, -3, -3][i],
-                              ),
+                              'Your next forecast starts here',
                               style: TextStyle(
-                                color: i == 0 ? Colors.white : ink,
-                                fontSize: 19,
+                                fontSize: 21,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Search a city, then choose a matching location.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: muted),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 30),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final forecast = forecastCard(current);
-                      final details = detailsCard();
-                      if (constraints.maxWidth < 700) {
-                        return Column(
+                  if (weather != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.near_me_outlined, size: 18),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            selectedCity!.label,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Weather in your city’s local time.',
+                      style: TextStyle(color: muted, fontSize: 14),
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8EDDC),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => Stack(
                           children: [
-                            forecast,
-                            const SizedBox(height: 26),
-                            details,
+                            Positioned(
+                              right: -45,
+                              bottom: -140,
+                              child: Container(
+                                width: 450,
+                                height: 320,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFFDDE6CE),
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.circle,
+                                        size: 7,
+                                        color: Color(0xFF73885E),
+                                      ),
+                                      SizedBox(width: 7),
+                                      Text(
+                                        'CURRENT WEATHER',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          letterSpacing: 1.7,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 22),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              temp(current),
+                                              style: TextStyle(
+                                                fontSize:
+                                                    constraints.maxWidth < 400
+                                                    ? 88
+                                                    : 112,
+                                                height: 1,
+                                                letterSpacing: -7,
+                                                fontWeight: FontWeight.w300,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            Text(
+                                              condition(weather!.code),
+                                              style: TextStyle(
+                                                fontSize: 21,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Feels like ${temp((weather!.current['apparent_temperature'] as num).round())}  ·  H:${temp(weather!.dayValue('temperature_2m_max', 0))}  L:${temp(weather!.dayValue('temperature_2m_min', 0))}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF677563),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: constraints.maxWidth < 400
+                                            ? 95
+                                            : 180,
+                                        height: 150,
+                                        child:
+                                            weather!.code <= 1 &&
+                                                weather!.current['is_day'] == 1
+                                            ? const CustomPaint(
+                                                painter: SunPainter(),
+                                              )
+                                            : Icon(
+                                                weatherIcon(
+                                                  weather!.code,
+                                                  night:
+                                                      weather!
+                                                          .current['is_day'] ==
+                                                      0,
+                                                ),
+                                                size: 80,
+                                                color: muted,
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 30),
+                                  const Divider(color: Color(0xFFCDD7C0)),
+                                  const SizedBox(height: 12),
+                                  const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.auto_awesome_outlined,
+                                        size: 17,
+                                      ),
+                                      SizedBox(width: 9),
+                                      Expanded(
+                                        child: Text(
+                                          'A fresh forecast for wherever your day takes you.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            height: 1.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    sectionTitle('The next 24 hours', 'HOURLY FORECAST'),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 134,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: hours.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 10),
+                        itemBuilder: (context, i) => Container(
+                          width: 77,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          decoration: BoxDecoration(
+                            color: i == 0
+                                ? ink
+                                : Colors.white.withValues(alpha: .65),
+                            borderRadius: BorderRadius.circular(22),
+                            border: i == 0
+                                ? null
+                                : Border.all(color: const Color(0xFFE6E8DF)),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                clockTime(
+                                  weather!.hourly['time'][hours[i]] as String,
+                                ),
+                                style: TextStyle(
+                                  color: i == 0 ? Colors.white70 : muted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              Icon(
+                                weatherIcon(
+                                  (weather!.hourly['weather_code'][hours[i]]
+                                          as num)
+                                      .toInt(),
+                                  night:
+                                      weather!.hourly['is_day'][hours[i]] == 0,
+                                ),
+                                color: const Color(0xFFD4A64A),
+                                size: 27,
+                              ),
+                              Text(
+                                temp(
+                                  (weather!.hourly['temperature_2m'][hours[i]]
+                                          as num)
+                                      .round(),
+                                ),
+                                style: TextStyle(
+                                  color: i == 0 ? Colors.white : ink,
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final forecast = forecastCard(current);
+                        final details = detailsCard();
+                        if (constraints.maxWidth < 700) {
+                          return Column(
+                            children: [
+                              forecast,
+                              const SizedBox(height: 26),
+                              details,
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: forecast),
+                            const SizedBox(width: 24),
+                            Expanded(child: details),
                           ],
                         );
-                      }
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: forecast),
-                          const SizedBox(width: 24),
-                          Expanded(child: details),
-                        ],
-                      );
-                    },
-                  ),
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   const Center(
                     child: Text(
-                      'Take a moment. Look up.\nSample weather · Made for your everyday',
+                      'Weather: Open-Meteo · Locations: GeoNames',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: muted, fontSize: 11, height: 1.8),
                     ),
@@ -386,7 +590,20 @@ class _WeatherHomeState extends State<WeatherHome> {
                   SizedBox(
                     width: 53,
                     child: Text(
-                      ['Today', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
+                      i == 0
+                          ? 'Today'
+                          : [
+                              'Mon',
+                              'Tue',
+                              'Wed',
+                              'Thu',
+                              'Fri',
+                              'Sat',
+                              'Sun',
+                            ][DateTime.parse(
+                                  weather!.daily['time'][i] as String,
+                                ).weekday -
+                                1],
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w400,
@@ -394,15 +611,13 @@ class _WeatherHomeState extends State<WeatherHome> {
                     ),
                   ),
                   Icon(
-                    i == 2 || i == 3
-                        ? Icons.cloud_outlined
-                        : Icons.wb_sunny_outlined,
+                    weatherIcon(weather!.dayValue('weather_code', i)),
                     color: i == 2 || i == 3 ? muted : const Color(0xFFD4A64A),
                     size: 22,
                   ),
                   const SizedBox(width: 18),
                   Text(
-                    temp(current - 4 + i % 3),
+                    temp(weather!.dayValue('temperature_2m_min', i)),
                     style: const TextStyle(color: muted, fontSize: 12),
                   ),
                   const SizedBox(width: 12),
@@ -429,7 +644,7 @@ class _WeatherHomeState extends State<WeatherHome> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    temp(current + 3 + i % 3),
+                    temp(weather!.dayValue('temperature_2m_max', i)),
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -457,27 +672,35 @@ class _WeatherHomeState extends State<WeatherHome> {
         crossAxisSpacing: 12,
         childAspectRatio: 1.3,
         children: [
-          detail(Icons.air, 'WIND', '12', 'km/h', '↗  From the west'),
+          detail(
+            Icons.air,
+            'WIND',
+            '${weather!.current['wind_speed_10m']}',
+            'km/h',
+            'Current wind speed',
+          ),
           detail(
             Icons.water_drop_outlined,
             'HUMIDITY',
-            '64',
+            '${weather!.current['relative_humidity_2m']}',
             '%',
-            'Comfortable outdoors',
+            'Relative humidity',
           ),
           detail(
             Icons.wb_sunny_outlined,
             'UV INDEX',
-            '4',
-            'Moderate',
-            'A little SPF goes a long way',
+            '${weather!.daily['uv_index_max'][0] ?? '—'}',
+            '',
+            'Daily maximum',
           ),
           detail(
             Icons.wb_twilight,
             'SUNSET',
-            '7:24',
-            'PM',
-            'Golden hour at 6:42 PM',
+            weather!.daily['sunset'][0] == null
+                ? '—'
+                : clockTime(weather!.daily['sunset'][0] as String),
+            '',
+            'Local time',
           ),
         ],
       ),
