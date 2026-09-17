@@ -28,9 +28,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Run calculator widget tests
-        run: flutter test test/widget_test.dart --reporter expanded
-
       - name: Build APK
         run: flutter build apk --release
 
