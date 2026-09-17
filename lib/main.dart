@@ -11,13 +11,32 @@ const ink = Color(0xFF243C39);
 const muted = Color(0xFF7D8880);
 const paper = Color(0xFFF6F5EF);
 
-class MyApp extends StatelessWidget {
+const inkDark = Color(0xFFE7ECE8);
+const mutedDark = Color(0xFF98A39B);
+const paperDark = Color(0xFF14181A);
+
+class MyApp extends StatefulWidget {
   const MyApp({super.key, this.service});
   final WeatherService? service;
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  ThemeMode themeMode = ThemeMode.light;
+
+  void toggleTheme() => setState(() {
+    themeMode = themeMode == ThemeMode.dark
+        ? ThemeMode.light
+        : ThemeMode.dark;
+  });
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'Daylight · Weather',
+    themeMode: themeMode,
+    themeAnimationDuration: Duration.zero,
     theme: ThemeData(
       useMaterial3: true,
       scaffoldBackgroundColor: paper,
@@ -25,13 +44,34 @@ class MyApp extends StatelessWidget {
       fontFamily: 'Helvetica',
       textTheme: const TextTheme(bodyMedium: TextStyle(color: ink)),
     ),
-    home: WeatherHome(service: service),
+    darkTheme: ThemeData(
+      useMaterial3: true,
+      scaffoldBackgroundColor: paperDark,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: ink,
+        brightness: Brightness.dark,
+      ),
+      fontFamily: 'Helvetica',
+      textTheme: const TextTheme(bodyMedium: TextStyle(color: inkDark)),
+    ),
+    home: WeatherHome(
+      service: widget.service,
+      isDark: themeMode == ThemeMode.dark,
+      onToggleTheme: toggleTheme,
+    ),
   );
 }
 
 class WeatherHome extends StatefulWidget {
-  const WeatherHome({super.key, this.service});
+  const WeatherHome({
+    super.key,
+    this.service,
+    required this.isDark,
+    required this.onToggleTheme,
+  });
   final WeatherService? service;
+  final bool isDark;
+  final VoidCallback onToggleTheme;
   @override
   State<WeatherHome> createState() => _WeatherHomeState();
 }
@@ -187,6 +227,27 @@ class _WeatherHomeState extends State<WeatherHome> {
   String temp(int value) =>
       '${celsius ? value : (value * 9 / 5 + 32).round()}°';
 
+  bool get isDark => widget.isDark;
+  Color get textColor => isDark ? inkDark : ink;
+  Color get mutedColor => isDark ? mutedDark : muted;
+  Color get surfaceColor => isDark ? const Color(0xFF1E2422) : Colors.white;
+  Color get borderColor =>
+      isDark ? const Color(0xFF2E3733) : const Color(0xFFD9DDD3);
+  Color get cardBg =>
+      isDark ? const Color(0xFF1F2A1E) : const Color(0xFFE8EDDC);
+  Color get cardCircle =>
+      isDark ? const Color(0xFF29352A) : const Color(0xFFDDE6CE);
+  Color get dotColor =>
+      isDark ? const Color(0xFF8FBE7A) : const Color(0xFF73885E);
+  Color get feelsLikeColor =>
+      isDark ? const Color(0xFFA9B8A2) : const Color(0xFF677563);
+  Color get dividerColor =>
+      isDark ? const Color(0xFF33402F) : const Color(0xFFCDD7C0);
+  Color get detailBg =>
+      isDark ? const Color(0xFF1C231B) : const Color(0xFFEDEFE6);
+  Color get trackBg =>
+      isDark ? const Color(0xFF2A322B) : const Color(0xFFEBEDE5);
+
   @override
   Widget build(BuildContext context) {
     final current = weather?.temperature ?? 0;
@@ -195,6 +256,7 @@ class _WeatherHomeState extends State<WeatherHome> {
       body: WeatherBackground(
         code: weather?.code,
         isDay: weather?.current['is_day'] != 0,
+        isDark: isDark,
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -209,21 +271,42 @@ class _WeatherHomeState extends State<WeatherHome> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.wb_sunny_outlined,
-                          size: 27,
-                          color: ink,
-                        ),
+                        Icon(Icons.wb_sunny_outlined, size: 27, color: textColor),
                         const SizedBox(width: 9),
-                        const Text(
-                          'daylight',
-                          style: TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -1,
+                        const Flexible(
+                          child: Text(
+                            'daylight',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -1,
+                            ),
                           ),
                         ),
                         const Spacer(),
+                        Semantics(
+                          label: 'Toggle dark mode',
+                          child: IconButton(
+                            tooltip: isDark
+                                ? 'Switch to light mode'
+                                : 'Switch to dark mode',
+                            onPressed: widget.onToggleTheme,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            icon: Icon(
+                              isDark
+                                  ? Icons.light_mode_outlined
+                                  : Icons.dark_mode_outlined,
+                              size: 22,
+                              color: textColor,
+                            ),
+                          ),
+                        ),
                         if (weather != null)
                           Semantics(
                             label: 'Temperature unit',
@@ -246,11 +329,11 @@ class _WeatherHomeState extends State<WeatherHome> {
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                   ),
-                                  selectedBackgroundColor: ink,
-                                  selectedForegroundColor: Colors.white,
-                                  side: const BorderSide(
-                                    color: Color(0xFFD9DDD3),
-                                  ),
+                                  selectedBackgroundColor: textColor,
+                                  selectedForegroundColor: isDark
+                                      ? paperDark
+                                      : Colors.white,
+                                  side: BorderSide(color: borderColor),
                                 ),
                               ),
                             ),
@@ -273,12 +356,10 @@ class _WeatherHomeState extends State<WeatherHome> {
                           icon: const Icon(Icons.arrow_forward),
                         ),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: surfaceColor,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(18),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFD9DDD3),
-                          ),
+                          borderSide: BorderSide(color: borderColor),
                         ),
                       ),
                     ),
@@ -304,7 +385,7 @@ class _WeatherHomeState extends State<WeatherHome> {
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
                         child: Material(
-                          color: Colors.white,
+                          color: surfaceColor,
                           borderRadius: BorderRadius.circular(18),
                           clipBehavior: Clip.antiAlias,
                           child: Column(
@@ -327,29 +408,29 @@ class _WeatherHomeState extends State<WeatherHome> {
                       ),
                     const SizedBox(height: 24),
                     if (weather == null)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 60),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 60),
                         child: Center(
                           child: Column(
                             children: [
                               Icon(
                                 Icons.travel_explore,
                                 size: 64,
-                                color: muted,
+                                color: mutedColor,
                               ),
-                              SizedBox(height: 20),
-                              Text(
+                              const SizedBox(height: 20),
+                              const Text(
                                 'Your next forecast starts here',
                                 style: TextStyle(
                                   fontSize: 21,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              SizedBox(height: 10),
+                              const SizedBox(height: 10),
                               Text(
                                 'Search a city, then choose a matching location.',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(color: muted),
+                                style: TextStyle(color: mutedColor),
                               ),
                             ],
                           ),
@@ -372,15 +453,15 @@ class _WeatherHomeState extends State<WeatherHome> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Weather in your city’s local time.',
-                        style: TextStyle(color: muted, fontSize: 14),
+                        style: TextStyle(color: mutedColor, fontSize: 14),
                       ),
                       const SizedBox(height: 24),
                       Container(
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8EDDC),
+                          color: cardBg,
                           borderRadius: BorderRadius.circular(28),
                         ),
                         clipBehavior: Clip.antiAlias,
@@ -393,9 +474,9 @@ class _WeatherHomeState extends State<WeatherHome> {
                                 child: Container(
                                   width: 450,
                                   height: 320,
-                                  decoration: const BoxDecoration(
+                                  decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Color(0xFFDDE6CE),
+                                    color: cardCircle,
                                   ),
                                 ),
                               ),
@@ -404,15 +485,15 @@ class _WeatherHomeState extends State<WeatherHome> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Row(
+                                    Row(
                                       children: [
                                         Icon(
                                           Icons.circle,
                                           size: 7,
-                                          color: Color(0xFF73885E),
+                                          color: dotColor,
                                         ),
-                                        SizedBox(width: 7),
-                                        Text(
+                                        const SizedBox(width: 7),
+                                        const Text(
                                           'CURRENT WEATHER',
                                           style: TextStyle(
                                             fontSize: 10,
@@ -453,9 +534,9 @@ class _WeatherHomeState extends State<WeatherHome> {
                                               const SizedBox(height: 8),
                                               Text(
                                                 'Feels like ${temp((weather!.current['apparent_temperature'] as num).round())}  ·  H:${temp(weather!.dayValue('temperature_2m_max', 0))}  L:${temp(weather!.dayValue('temperature_2m_min', 0))}',
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 12,
-                                                  color: Color(0xFF677563),
+                                                  color: feelsLikeColor,
                                                 ),
                                               ),
                                             ],
@@ -482,13 +563,13 @@ class _WeatherHomeState extends State<WeatherHome> {
                                                         0,
                                                   ),
                                                   size: 80,
-                                                  color: muted,
+                                                  color: mutedColor,
                                                 ),
                                         ),
                                       ],
                                     ),
                                     const SizedBox(height: 30),
-                                    const Divider(color: Color(0xFFCDD7C0)),
+                                    Divider(color: dividerColor),
                                     const SizedBox(height: 12),
                                     const Row(
                                       children: [
@@ -529,12 +610,14 @@ class _WeatherHomeState extends State<WeatherHome> {
                             padding: const EdgeInsets.symmetric(vertical: 15),
                             decoration: BoxDecoration(
                               color: i == 0
-                                  ? ink
-                                  : Colors.white.withValues(alpha: .65),
+                                  ? textColor
+                                  : surfaceColor.withValues(
+                                      alpha: isDark ? .5 : .65,
+                                    ),
                               borderRadius: BorderRadius.circular(22),
                               border: i == 0
                                   ? null
-                                  : Border.all(color: const Color(0xFFE6E8DF)),
+                                  : Border.all(color: borderColor),
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -544,7 +627,9 @@ class _WeatherHomeState extends State<WeatherHome> {
                                     weather!.hourly['time'][hours[i]] as String,
                                   ),
                                   style: TextStyle(
-                                    color: i == 0 ? Colors.white70 : muted,
+                                    color: i == 0
+                                        ? (isDark ? paperDark : Colors.white70)
+                                        : mutedColor,
                                     fontSize: 11,
                                   ),
                                 ),
@@ -567,7 +652,9 @@ class _WeatherHomeState extends State<WeatherHome> {
                                         .round(),
                                   ),
                                   style: TextStyle(
-                                    color: i == 0 ? Colors.white : ink,
+                                    color: i == 0
+                                        ? (isDark ? paperDark : Colors.white)
+                                        : textColor,
                                     fontSize: 19,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -603,12 +690,12 @@ class _WeatherHomeState extends State<WeatherHome> {
                       ),
                     ],
                     const SizedBox(height: 28),
-                    const Center(
+                    Center(
                       child: Text(
                         'Weather: Open-Meteo · Locations: GeoNames\nAir quality: Open-Meteo / CAMS',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: muted,
+                          color: mutedColor,
                           fontSize: 11,
                           height: 1.8,
                         ),
@@ -629,8 +716,8 @@ class _WeatherHomeState extends State<WeatherHome> {
     children: [
       Text(
         eyebrow,
-        style: const TextStyle(
-          color: muted,
+        style: TextStyle(
+          color: mutedColor,
           fontSize: 9,
           letterSpacing: 1.6,
           fontWeight: FontWeight.w600,
@@ -656,9 +743,9 @@ class _WeatherHomeState extends State<WeatherHome> {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .65),
+          color: surfaceColor.withValues(alpha: isDark ? .5 : .65),
           borderRadius: BorderRadius.circular(23),
-          border: Border.all(color: const Color(0xFFE6E8DF)),
+          border: Border.all(color: borderColor),
         ),
         child: Column(
           children: List.generate(
@@ -692,20 +779,22 @@ class _WeatherHomeState extends State<WeatherHome> {
                   ),
                   Icon(
                     weatherIcon(weather!.dayValue('weather_code', i)),
-                    color: i == 2 || i == 3 ? muted : const Color(0xFFD4A64A),
+                    color: i == 2 || i == 3
+                        ? mutedColor
+                        : const Color(0xFFD4A64A),
                     size: 22,
                   ),
                   const SizedBox(width: 18),
                   Text(
                     temp(weather!.dayValue('temperature_2m_min', i)),
-                    style: const TextStyle(color: muted, fontSize: 12),
+                    style: TextStyle(color: mutedColor, fontSize: 12),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Container(
                       height: 5,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEBEDE5),
+                        color: trackBg,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: FractionallySizedBox(
@@ -811,7 +900,7 @@ class _WeatherHomeState extends State<WeatherHome> {
   ) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: const Color(0xFFEDEFE6),
+      color: detailBg,
       borderRadius: BorderRadius.circular(21),
     ),
     child: Column(
@@ -820,14 +909,14 @@ class _WeatherHomeState extends State<WeatherHome> {
       children: [
         Row(
           children: [
-            Icon(icon, size: 17, color: muted),
+            Icon(icon, size: 17, color: mutedColor),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 9,
-                  color: muted,
+                  color: mutedColor,
                   letterSpacing: 1,
                 ),
               ),
@@ -850,12 +939,12 @@ class _WeatherHomeState extends State<WeatherHome> {
                   ),
                 ),
                 const SizedBox(width: 5),
-                Text(unit, style: const TextStyle(fontSize: 11, color: muted)),
+                Text(unit, style: TextStyle(fontSize: 11, color: mutedColor)),
               ],
             ),
           ),
         ),
-        Text(note, style: const TextStyle(fontSize: 10, color: muted)),
+        Text(note, style: TextStyle(fontSize: 10, color: mutedColor)),
       ],
     ),
   );

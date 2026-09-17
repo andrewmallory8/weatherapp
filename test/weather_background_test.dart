@@ -37,6 +37,7 @@ void main() {
               body: WeatherBackground(
                 code: code,
                 isDay: isDay,
+                isDark: false,
                 child: Center(
                   child: TextButton(
                     onPressed: () => taps++,

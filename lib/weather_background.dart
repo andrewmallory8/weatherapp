@@ -16,22 +16,33 @@ WeatherScene weatherScene(int code) {
   return WeatherScene.clear;
 }
 
+/// Darkens a color for dark mode while keeping a hint of its original hue.
+Color _darken(Color c) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl
+      .withLightness((hsl.lightness * 0.24).clamp(0.05, 1.0))
+      .withSaturation((hsl.saturation * 0.7).clamp(0.0, 1.0))
+      .toColor();
+}
+
 class WeatherBackground extends StatelessWidget {
   const WeatherBackground({
     super.key,
     required this.code,
     required this.isDay,
+    required this.isDark,
     required this.child,
   });
 
   final int? code;
   final bool isDay;
+  final bool isDark;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final scene = weatherScene(code ?? 0);
-    final colors = code == null
+    var colors = code == null
         ? const [Color(0xFFF6F5EF), Color(0xFFF6F5EF)]
         : isDay
         ? switch (scene) {
@@ -50,6 +61,11 @@ class WeatherBackground extends StatelessWidget {
             WeatherScene.snow => const [Color(0xFFB9CDE2), Color(0xFFEDF2F7)],
             WeatherScene.storm => const [Color(0xFFB4ABC9), Color(0xFFE5E0EC)],
           };
+    if (isDark) {
+      colors = code == null
+          ? const [Color(0xFF14181A), Color(0xFF14181A)]
+          : [_darken(colors[0]), _darken(colors[1])];
+    }
     return AnimatedContainer(
       key: const ValueKey('weather-background'),
       duration: MediaQuery.disableAnimationsOf(context)
